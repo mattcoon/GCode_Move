@@ -1,0 +1,48 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: laser",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["-iKalicoon_LB.gcode","-X-20","-Y12"]
+        },
+        {
+            "name": "Python: laser limiter",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["-iracoon_laser_moved.gcode","-l128"]
+        },
+        {
+            "name": "Python: laser scaler",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["-iracoon_laser_moved.gcode","-l128","-s4"]
+        },
+        {
+            "name": "Python: 3d print",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["-iracoon_laser_moved.gcode","-X0","-Y0","-l128"]
+        }
+        {
+            "name": "Python: blank",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": []
+        }
+    ]
+}
