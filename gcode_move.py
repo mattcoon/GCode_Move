@@ -4,9 +4,8 @@
 # - scaling feed, extrusion, or X,Y,Z
 # - analysis only mode with statistics before and after modification
 # - runs command line or interactive
-# TODO: scale based on end size width or height
-# TODO: sanity check for -c clean to not conflict with offsets and throw error
 # TODO: enable individual interactive for missing components of commandline
+# TODO: add axis rotation
 
 from pathlib import Path
 import re
@@ -25,7 +24,7 @@ def findInt (str,param):
 
 
 def ProcessFile (filenameIn, filenameOut):
-    
+    global scaleXYZ
     bLaserOn=False
     bScaledXYZ=False
     deltaX = offsetX
@@ -54,7 +53,7 @@ def ProcessFile (filenameIn, filenameOut):
         print("Writing to "+filenameOut)
 
     with open(Path(filenameIn),'r') as fileIn:
-        # Find offset wiht finMinX and MinY
+        # Find offset with finMinX and MinY
         for line in fileIn:
             if line[0:1] == 'G':
                 for axis in ['X','Y','Z']:
@@ -76,10 +75,18 @@ def ProcessFile (filenameIn, filenameOut):
         initMinX = min(initMinX,initMaxX)
         initMinY = min(initMinY,initMaxY)
         initMinZ = min(initMinZ,initMaxZ)
-        if bCleanMode:
-            deltaX = -initMinX
-            deltaY = -initMinY
-            deltaZ = -initMinZ
+        if 'bCleanMode' in globals():
+            # calculate deltas based on requested location and found min values
+            deltaX += -initMinX
+            deltaY += -initMinY
+            deltaZ += -initMinZ
+        if 'tarDepth' in globals():
+            scaleXYZ = tarDepth/(initMaxY-initMinY)
+            bScaledXYZ = True
+        if 'tarWidth' in globals():
+            scaleXYZ = tarWidth/(initMaxX-initMinX)
+            bScaledXYZ = True
+
         fileIn.seek(0)
         # reset file if offset searched
 
@@ -157,14 +164,12 @@ def ProcessFile (filenameIn, filenameOut):
         print('Scaled by '+'{:.2f}'.format(scaleXYZ)+'.')
         print('Initial')
         print('Min X: {0:.2f} Max X: {1:.2f} width: {2:.2f}'.format(initMinX, initMaxX, initMaxX-initMinX))
-        print('Min Y: {0:.2f} Max Y: {1:.2f} width: {2:.2f}'.format(initMinY, initMaxY, initMaxY-initMinY))
-        print('Min Z: {0:.2f} Max Z: {1:.2f} width: {2:.2f}'.format(initMinZ, initMaxZ, initMaxZ-initMinZ))
+        print('Min Y: {0:.2f} Max Y: {1:.2f} depth: {2:.2f}'.format(initMinY, initMaxY, initMaxY-initMinY))
+        print('Min Z: {0:.2f} Max Z: {1:.2f} height: {2:.2f}'.format(initMinZ, initMaxZ, initMaxZ-initMinZ))
         print('Final')
         print('Min X: {0:.2f} Max X: {1:.2f} width: {2:.2f}'.format(finMinX, finMaxX, finMaxX-finMinX))
-        print('Min Y: {0:.2f} Max Y: {1:.2f} width: {2:.2f}'.format(finMinY, finMaxY, finMaxY-finMinY))
-        print('Min Z: {0:.2f} Max Z: {1:.2f} width: {2:.2f}'.format(finMinZ, finMaxZ, finMaxZ-finMinZ))
-
-
+        print('Min Y: {0:.2f} Max Y: {1:.2f} depth: {2:.2f}'.format(finMinY, finMaxY, finMaxY-finMinY))
+        print('Min Z: {0:.2f} Max Z: {1:.2f} height: {2:.2f}'.format(finMinZ, finMaxZ, finMaxZ-finMinZ))
 
 def Transpose (position,offset,limLow,limHi):
     return round(max(limLow,min(limHi,position+offset)),6)
@@ -188,7 +193,6 @@ minOn = 0.0
 filenameIn = ''
 filenameOut = ''
 bAnalyseOnly = False
-bCleanMode = False
 bLaserMode = False
 
 if len(sys.argv) > 1:
@@ -212,16 +216,19 @@ if len(sys.argv) > 1:
                 deltaE = float(userData)
             case '-h':
                 print('gcode_move -iInputFile -oOutputFile -Xoffset -Yoffset -Zoffset -FFeedrate -EExtruderrate')
-                print('           -aAnalyseOnly -lLaserlowerLimit -sScaleXYZ -cClean')
-                print('Feedrate are in percent. Offset in mm.')
+                print('           -aAnalyseOnly -lLaserlowerLimit -sScaleXYZ -cClean -wWidth -dDepth')
+                print('Feedrates are in percent. Offset in mm.')
                 print('laser affects fanspeed 0-255 before turning off laser and puts in laser mode. ')
                 print('G1 while laser is off will become G0. use -l0 to keep laser PWMs but use G1/G0 substitutions')
                 print('XYZ scaling will treat as a mulitpler for any present components while keeping offsets. Note for 3d')
                 print('the first line is in scope and will prevent use of offset for scaling')
                 print('Clean mode removes all offsets and sets object to lowest possible point.')
+                print('If cleanmode and offset used, will set oject to absolute locations')
+                print('Width and Depth cannot be used together or with Scaling.')
                 quit()
             case '-a':
                 bAnalyseOnly = True
+                print('Analysis Only Mode - no output')
             case '-c':
                 bCleanMode = True
             case '-l':
@@ -229,14 +236,18 @@ if len(sys.argv) > 1:
                 bLaserMode = True
             case '-s':
                 scaleXYZ = float(userData)
+            case '-w':
+                tarWidth = float(userData)
+            case '-d':
+                tarDepth = float(userData)
 else:
     print('no args - defaults in ( )')
     userIn = input('X Offset ({:}):'.format(str(offsetX)))
-    if userIn != '': deltaX = float(userIn) 
+    if userIn != '': offsetX = float(userIn) 
     userIn = input('Y Offset ({:}):'.format(str(offsetY)))
-    if userIn != '': deltaY = float(userIn) 
+    if userIn != '': offsetY = float(userIn) 
     userIn = input('Z Offset ({:}):'.format(str(offsetZ)))
-    if userIn != '': deltaZ = float(userIn) 
+    if userIn != '': offsetZ = float(userIn) 
     userIn = input('XYZ Scaling ({:}):'.format(str(scaleXYZ)))
     if userIn != '': scaleXYZ = float(userIn) 
     userIn = input('Feed Rate scaling ({:}):'.format(str(scaleF)))
@@ -260,7 +271,11 @@ else:
 
 if filenameOut == '':
     filenameOut = 'out'+filenameIn
-
+if 'tarDepth' in globals() and 'tarWidth' in globals():
+    print('fixed width and depth cannot be both set')
+    quit()
+if scaleXYZ != 1 and ('tarDepth' in globals() or 'tarWidth' in globals()):
+    print('scaling and widith or depth cannot be used together. skipping scaling')
 
 ProcessFile(filenameIn,filenameOut)
 
