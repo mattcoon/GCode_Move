@@ -5,15 +5,15 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: laser",
+            "name": "abs position",
             "type": "python",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["-iKalicoon_LB.gcode","-X-20","-Y12"]
+            "args": ["-iKalicoon_LB.gcode","-X20","-Y12","-c"]
         },
         {
-            "name": "Python: laser limiter",
+            "name": "laser limiter",
             "type": "python",
             "request": "launch",
             "program": "${file}",
@@ -21,23 +21,63 @@
             "args": ["-iracoon_laser_moved.gcode","-l128"]
         },
         {
-            "name": "Python: laser scaler",
+            "name": "clean",
             "type": "python",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["-iracoon_laser_moved.gcode","-l128","-s4"]
+            "args": ["-iracoon_laser_moved.gcode","-c"]
         },
         {
-            "name": "Python: 3d print",
+            "name": "laser shift",
             "type": "python",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["-iracoon_laser_moved.gcode","-X0","-Y0","-l128"]
-        }
+            "args": ["-iracoon_laser_moved.gcode","-X64","-Y14.5","-l128"]
+        },
         {
-            "name": "Python: blank",
+            "name": "rotation +90",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["-iracoon_laser_moved.gcode","-r-90","-l128"]
+        },
+        {
+            "name": "scale percent",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["-iracoon_laser_moved.gcode","-s2"]
+        },
+        {
+            "name": "scale fix size w20",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["-iracoon_laser_moved.gcode","-w20"]
+        },
+        {
+            "name": "scale fix size d4",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["-iracoon_laser_moved.gcode","-d4"]
+        },
+        {
+            "name": "scale fix size w20 d4",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["-iracoon_laser_moved.gcode","-d4","-w20"]
+        },
+        {
+            "name": "blank cmd",
             "type": "python",
             "request": "launch",
             "program": "${file}",

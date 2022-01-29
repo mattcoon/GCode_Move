@@ -1,19 +1,18 @@
 # gcode_move by Matthew Coon
 # written to support easy manipulation of GCODE for 3d printing or laser cutting
 # - moving offset to object from 0,0,0
-# - scaling feed, extrusion, or X,Y,Z
+# - scaling feed, extrusion, or X,Y,Z independently
+# - scale based on target width or depth
 # - analysis only mode with statistics before and after modification
 # - runs command line or interactive
-# - rotates image by 90 or 180 deg
-# TODO: enable individual interactive for missing components of commandline
-# TODO: add axis rotation
+# - rotates image by -/+90 or 180 deg
 # TODO: get __add__ __sub__ working for axis
 
 from pathlib import Path
 import re
 import sys
 
-class axis:
+class cAxis:
     def __init__(self,x=0,y=0,z=0,f=0,e=0) -> None:
         self.x = x
         self.y = y 
@@ -21,9 +20,9 @@ class axis:
         self.f = f
         self.e = e
     def __add__(self,addr):
-        return axis(self.x+addr.x, self.y+addr.y, self.z+addr.z, self.f+addr.f, self.e+addr.e)
+        return cAxis(self.x+addr.x, self.y+addr.y, self.z+addr.z, self.f+addr.f, self.e+addr.e)
     def __sub__(self,addr):
-        return axis(self.x-addr.x, self.y-addr.y, self.z-addr.z, self.f-addr.f, self.e-addr.e)
+        return cAxis(self.x-addr.x, self.y-addr.y, self.z-addr.z, self.f-addr.f, self.e-addr.e)
     def min(self,other):
         self.x = min(self.x,other.x)
         self.y = min(self.y,other.y)
@@ -36,8 +35,40 @@ class axis:
         self.z = other.z
         self.f = other.f
         self.e = other.e
+    def setXYZ(self,value):
+        self.x = value
+        self.y = value
+        self.z = value
 
-    
+def rotate (position,rotation,offsets, limits):
+    axis = position[0:1]
+    distance = float(findFloat(position,axis).groups()[0])
+    if rotation == 90:
+        # CW rotation: x=y, y=maxX-x: LL corner is UL
+        if axis == 'Y':
+            axis = 'X'
+            distance = offsets.x + distance - offsets.y
+        elif axis == 'X':
+            axis = 'Y'
+            distance = offsets.y + limits.x - distance
+    elif rotation == -90:
+        # CCWrotation: x=maxY-y, y=x: LL corner is LR
+        if axis == 'X':
+            axis = 'Y'
+            distance = offsets.y + distance - offsets.x
+        elif axis== 'Y':
+            axis = 'X'
+            distance = offsets.x + limits.y - distance
+    elif rotation == 180:
+        # 180 rotation: x=maxX-x,y=maxY-y: LL corner is UR
+        if axis == 'X':
+            distance = offsets.x + limits.x - distance
+        elif axis == 'Y':
+            distance = offsets.y + limits.y - distance
+    else:
+        #else do nothing. assume 0. must be caught
+        pass
+    return str(axis+str(distance))
 
 
 def findFloat (str,param):
@@ -56,22 +87,19 @@ def findInt (str,param):
 
 
 def ProcessFile (filenameIn, filenameOut):
-    global scaleXYZ
-    global axis
+    global cAxis
+    global scale
   
     bLaserOn=False
-    bScaledXYZ=False
     delta = offset
 
-    initialMin = axis()
+    initialMin = cAxis()
     initialMin.copy(LimMax)
-    initialMax = axis()
-    finalMin = axis()
+    initialMax = cAxis()
+    finalMin = cAxis()
     finalMin.copy(LimMax)
-    finalMax = axis()
+    finalMax = cAxis()
 
-    if scaleXYZ != 1:
-        bScaledXYZ = True
     if not bAnalyseOnly:
         fileOut = open(Path(filenameOut),'w')
         print("Writing to "+filenameOut)
@@ -99,16 +127,18 @@ def ProcessFile (filenameIn, filenameOut):
         initialMin.min(initialMax)
         if 'bCleanMode' in globals():
             # calculate deltas based on requested location and found min values
-            # TODO: delta = delta - initialMin should work
+            # TODO: delta -= initialMin should work instead of each axis
             delta.x -= initialMin.x
             delta.y -= initialMin.y
             delta.z -= initialMin.z
         if 'tarDepth' in globals():
-            scaleXYZ = tarDepth/(initialMax.y-initialMin.y)
-            bScaledXYZ = True
+            scale.y = tarDepth/(initialMax.y-initialMin.y)
+            if 'tarWidth' not in globals():
+                scale.x = scale.y
         if 'tarWidth' in globals():
-            scaleXYZ = tarWidth/(initialMax.x-initialMin.x)
-            bScaledXYZ = True
+            scale.x = tarWidth/(initialMax.x-initialMin.x)
+            if 'tarDepth' not in globals():
+                scale.y = scale.x
 
         fileIn.seek(0)
         # reset file if offset searched
@@ -133,39 +163,40 @@ def ProcessFile (filenameIn, filenameOut):
                                 #leave G0/G1 alone a pass thru
                                 lineNew = parts
                         else:
-                            valuestr = findFloat(parts,parts[0:1])
+                            if rotation != 0:
+                                # rotation done before scaling and offsetting and axis to simplify handling of parameter
+                                parts = rotate(parts,rotation,initialMin,initialMax)
+                            axis = parts[0:1]
+                            valuestr = findFloat(parts,axis)
                             if valuestr:
                                 currentPos = float(valuestr.groups()[0])
                             else:
                                 currentPos = 0
-                            match parts[0:1]:
+                            match axis:
                                 case 'X':
-                                    if bScaledXYZ:
-                                        currentPos = Scale(currentPos-initialMin.x,scaleXYZ,0,LimMax.x)+initialMin.x
+                                    currentPos = Scale(currentPos-initialMin.x,scale.x,0,LimMax.x)+initialMin.x
                                     currentPos = Transpose(currentPos,delta.x,0,LimMax.x)
-                                    lineNew+= ' {0:s}{1:.6f}'.format(parts[0:1],currentPos)
+                                    lineNew+= ' {0:s}{1:.6f}'.format(axis,currentPos)
                                     finalMax.x = max(currentPos,finalMax.x)
                                     finalMin.x = min(currentPos,finalMin.x)
                                 case 'Y':
-                                    if bScaledXYZ:
-                                        currentPos = Scale(currentPos-initialMin.y,scaleXYZ,0,LimMax.y)+initialMin.y
+                                    currentPos = Scale(currentPos-initialMin.y,scale.y,0,LimMax.y)+initialMin.y
                                     currentPos = Transpose(currentPos,delta.y,0,LimMax.y)
-                                    lineNew+= ' {0:s}{1:.6f}'.format(parts[0:1],currentPos)
+                                    lineNew+= ' {0:s}{1:.6f}'.format(axis,currentPos)
                                     finalMax.y = max(currentPos,finalMax.y)
                                     finalMin.y = min(currentPos,finalMin.y)
                                 case 'Z':
-                                    if bScaledXYZ:
-                                        currentPos = Scale(currentPos-initialMin.z,scaleXYZ,0,LimMax.z)+initialMin.z
+                                    currentPos = Scale(currentPos-initialMin.z,scale.z,0,LimMax.z)+initialMin.z
                                     currentPos = Transpose(currentPos,delta.z,0,LimMax.z)
-                                    lineNew+= ' {0:s}{1:.6f}'.format(parts[0:1],currentPos)
+                                    lineNew+= ' {0:s}{1:.6f}'.format(axis,currentPos)
                                     finalMax.z = max(currentPos,finalMax.z)
                                     finalMin.z = min(currentPos,finalMin.z)
                                 case 'F':
                                     currentPos = Scale(currentPos,scale.f,0,LimMax.f)
-                                    lineNew+= ' '+parts[0:1]+str(currentPos)
+                                    lineNew+= ' '+axis+str(currentPos)
                                 case 'E':
                                     currentPos = Scale(currentPos,scale.e,-LimMax.e,LimMax.e)
-                                    lineNew+= ' '+parts[0:1]+str(currentPos)
+                                    lineNew+= ' '+axis+str(currentPos)
                     line = lineNew+'\n'
                 #check for Laser (fan PWM) on command
                 if linesplit[0] == "M106":
@@ -182,7 +213,7 @@ def ProcessFile (filenameIn, filenameOut):
                 if bAnalyseOnly == False:
                     fileOut.write(line)
         finalMin.min(finalMax)
-        print('Scaled by '+'{:.2f}'.format(scaleXYZ)+'.')
+        print('Scaled by x:{0:.2f} y:{1:.2f}.'.format(scale.x,scale.y))
         print('Initial')
         print('Min X: {0:.2f} Max X: {1:.2f} width: {2:.2f}'.format(initialMin.x, initialMax.x, initialMax.x-initialMin.x))
         print('Min Y: {0:.2f} Max Y: {1:.2f} depth: {2:.2f}'.format(initialMin.y, initialMax.y, initialMax.y-initialMin.y))
@@ -198,11 +229,12 @@ def Transpose (position,offset,limLow,limHi):
 def Scale (position,scale,limLow,LimHi):
     return round(max(limLow,min(LimHi,position*scale)),6)
     
-offset = axis(0,0,0)
-scale = axis(1,1,1,1,1)
-scaleXYZ = 1.0
-LimMax = axis (220, 220,250,50000,50000)
-LimMin = axis (0, 0, 0)
+offset = cAxis(0,0,0)
+defaultScale = 1
+scale = cAxis(defaultScale,defaultScale,defaultScale,defaultScale,defaultScale)
+rotation = 0
+LimMax = cAxis (220, 220,250,50000,50000)
+LimMin = cAxis (0, 0, 0)
 minOn = 0.0
 filenameIn = ''
 filenameOut = ''
@@ -230,7 +262,7 @@ if len(sys.argv) > 1:
                 scale.e = float(userData)
             case '-h':
                 print('gcode_move -iInputFile -oOutputFile -Xoffset -Yoffset -Zoffset -FFeedrate -EExtruderrate')
-                print('           -aAnalyseOnly -lLaserlowerLimit -sScaleXYZ -cClean -wWidth -dDepth -rRotate')
+                print('           -aAnalyseOnly -lLaserlowerLimit -sScale -cClean -wWidth -dDepth -rRotate')
                 print('Feedrates are in percent. Offset in mm.')
                 print('laser affects fanspeed 0-255 before turning off laser and puts in laser mode. ')
                 print('G1 while laser is off will become G0. use -l0 to keep laser PWMs but use G1/G0 substitutions')
@@ -238,7 +270,7 @@ if len(sys.argv) > 1:
                 print('the first line is in scope and will prevent use of offset for scaling')
                 print('Clean mode removes all offsets and sets object to 0 offset.')
                 print('If cleanmode and offset used, will set object to absolute locations')
-                print('Width and Depth cannot be used together or with Scaling.')
+                print('Width and Depth cannot be used together with Scaling.')
                 print('Rotate take 90 for CW, 180, or -90 for CCW rotations only')
                 quit()
             case '-a':
@@ -250,20 +282,25 @@ if len(sys.argv) > 1:
                 minOn = float(userData)
                 bLaserMode = True
             case '-s':
-                scaleXYZ = float(userData)
+                defaultScale = (float(userData))
+                scale.setXYZ(defaultScale)
             case '-w':
                 tarWidth = float(userData)
             case '-d':
                 tarDepth = float(userData)
-            case 'r':
-                if userData == 90:
-                    rotate = 90
-                elif userData == -90:
-                    rotate = -90
-                elif userData == 180:
-                    rotate = 180
+            case '-r':
+                if userData == '0':
+                    rotation = 0
+                elif userData == '90':
+                    rotation = 90
+                elif userData == '-90':
+                    rotation = -90
+                elif userData == '180':
+                    rotation = 180
                 else:
-                    print('Rotation of {:0} not allowed.'.format(userData))
+                    print('Rotation of {} not allowed.'.format(userData))
+                    quit()
+                print('Image rotation {}'.format(rotation))
 else:
     print('no args - defaults in ( )')
     userIn = input('X Offset ({:}):'.format(str(offset.x)))
@@ -272,8 +309,8 @@ else:
     if userIn != '': offset.y = float(userIn) 
     userIn = input('Z Offset ({:}):'.format(str(offset.z)))
     if userIn != '': offset.z = float(userIn) 
-    userIn = input('XYZ Scaling ({:}):'.format(str(scaleXYZ)))
-    if userIn != '': scaleXYZ = float(userIn) 
+    userIn = input('XYZ Scaling ({:}):'.format(str(defaultScale)))
+    if userIn != '': scale.setXYZ(float(userIn))
     userIn = input('Feed Rate scaling ({:}):'.format(str(scale.f)))
     if userIn != '': scale.f = float(userIn) 
     userIn = input('Extruder Rate scaling ({:}):'.format(str(scale.e)))
@@ -290,16 +327,15 @@ else:
     if userIn != '': LimMax.e = float(userIn) 
     userIn = input('Laswer PWM off limit ({:}):'.format(str(minOn)))
     if userIn != '': minOn = float(userIn) 
+
+
+if filenameIn == '':
     filenameIn = input('Input filename:')
-
-
 if filenameOut == '':
     filenameOut = 'out'+filenameIn
-if 'tarDepth' in globals() and 'tarWidth' in globals():
-    print('fixed width and depth cannot be both set')
-    quit()
-if scaleXYZ != 1 and ('tarDepth' in globals() or 'tarWidth' in globals()):
+if defaultScale!= 1 and ('tarDepth' in globals() or 'tarWidth' in globals()):
     print('scaling and widith or depth cannot be used together. skipping scaling')
+    #skipping happens automatically as fixed width and depth will overwrite any fixed scaler
 
 ProcessFile(filenameIn,filenameOut)
 
