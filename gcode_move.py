@@ -6,7 +6,6 @@
 # - analysis only mode with statistics before and after modification
 # - runs command line or interactive
 # - rotates image by -/+90 or 180 deg
-# TODO: get __add__ __sub__ working for axis
 
 from pathlib import Path
 import re
@@ -101,11 +100,12 @@ def ProcessFile (filenameIn, filenameOut):
     finalMax = cAxis()
 
     if not bAnalyseOnly:
+        # only open output file if no in analysis mode
         fileOut = open(Path(filenameOut),'w')
         print("Writing to "+filenameOut)
 
     with open(Path(filenameIn),'r') as fileIn:
-        # Find offset with finMinX and MinY
+        # Find offset with finalMin
         for line in fileIn:
             if line[0:1] == 'G':
                 for axis in ['X','Y','Z']:
@@ -127,16 +127,15 @@ def ProcessFile (filenameIn, filenameOut):
         initialMin.min(initialMax)
         if 'bCleanMode' in globals():
             # calculate deltas based on requested location and found min values
-            # TODO: delta -= initialMin should work instead of each axis
-            delta.x -= initialMin.x
-            delta.y -= initialMin.y
-            delta.z -= initialMin.z
+            delta -= initialMin
         if 'tarDepth' in globals():
             scale.y = tarDepth/(initialMax.y-initialMin.y)
+            # if width not specified scale proportionally
             if 'tarWidth' not in globals():
                 scale.x = scale.y
         if 'tarWidth' in globals():
             scale.x = tarWidth/(initialMax.x-initialMin.x)
+            # if depth not specified scale proportionally
             if 'tarDepth' not in globals():
                 scale.y = scale.x
 
@@ -160,7 +159,7 @@ def ProcessFile (filenameIn, filenameOut):
                                 else:
                                     lineNew = 'G0'
                             else:
-                                #leave G0/G1 alone a pass thru
+                                #leave G0/G1 alone as pass thru
                                 lineNew = parts
                         else:
                             if rotation != 0:
@@ -207,12 +206,15 @@ def ProcessFile (filenameIn, filenameOut):
                     else:
                         # else write line as is.
                         bLaserOn=True
-                #check for laser off
+                # check for laser (fan PWM) off commadn
                 if linesplit[0] == "M107":
                     bLaserOn = False
+                # write only if not in analyse only mode
                 if bAnalyseOnly == False:
                     fileOut.write(line)
+        # fix any statistics where no change in axis. min will still be at max
         finalMin.min(finalMax)
+        # output statistics 
         print('Scaled by x:{0:.2f} y:{1:.2f}.'.format(scale.x,scale.y))
         print('Initial')
         print('Min X: {0:.2f} Max X: {1:.2f} width: {2:.2f}'.format(initialMin.x, initialMax.x, initialMax.x-initialMin.x))
@@ -240,6 +242,7 @@ filenameIn = ''
 filenameOut = ''
 bAnalyseOnly = False
 bLaserMode = False
+
 
 if len(sys.argv) > 1:
     for argument in sys.argv:
@@ -302,43 +305,40 @@ if len(sys.argv) > 1:
                     quit()
                 print('Image rotation {}'.format(rotation))
 else:
+    # No arguments passed. walk user thru common inputs
     print('no args - defaults in ( )')
-    userIn = input('X Offset ({:}):'.format(str(offset.x)))
+    userIn = input('X Offset ({}):'.format(str(offset.x)))
     if userIn != '': offset.x = float(userIn) 
-    userIn = input('Y Offset ({:}):'.format(str(offset.y)))
+    userIn = input('Y Offset ({}):'.format(str(offset.y)))
     if userIn != '': offset.y = float(userIn) 
-    userIn = input('Z Offset ({:}):'.format(str(offset.z)))
+    userIn = input('Z Offset ({}):'.format(str(offset.z)))
     if userIn != '': offset.z = float(userIn) 
-    userIn = input('XYZ Scaling ({:}):'.format(str(defaultScale)))
+    userIn = input('XYZ Scaling ({}):'.format(str(defaultScale)))
     if userIn != '': scale.setXYZ(float(userIn))
-    userIn = input('Feed Rate scaling ({:}):'.format(str(scale.f)))
+    userIn = input('Feed Rate scaling ({}):'.format(str(scale.f)))
     if userIn != '': scale.f = float(userIn) 
-    userIn = input('Extruder Rate scaling ({:}):'.format(str(scale.e)))
+    userIn = input('Extruder Rate scaling ({}):'.format(str(scale.e)))
     if userIn != '': scale.e = float(userIn) 
-    userIn = input('Max X value ({:}):'.format(str(LimMax.x)))
+    userIn = input('Max X value ({}):'.format(str(LimMax.x)))
     if userIn != '': LimMax.x = float(userIn) 
-    userIn = input('Max Y value ({:}):'.format(str(LimMax.y)))
+    userIn = input('Max Y value ({}):'.format(str(LimMax.y)))
     if userIn != '': LimMax.y = float(userIn) 
-    userIn = input('Max Z value ({:}):'.format(str(LimMax.z)))
+    userIn = input('Max Z value ({}):'.format(str(LimMax.z)))
     if userIn != '': LimMax.z = float(userIn) 
-    userIn = input('Max feedrate ({:}):'.format(str(LimMax.f)))
+    userIn = input('Max feedrate ({}):'.format(str(LimMax.f)))
     if userIn != '': LimMax.f = float(userIn) 
-    userIn = input('Max Extruder ({:}):'.format(str(LimMax.e)))
+    userIn = input('Max Extruder ({}):'.format(str(LimMax.e)))
     if userIn != '': LimMax.e = float(userIn) 
-    userIn = input('Laswer PWM off limit ({:}):'.format(str(minOn)))
+    userIn = input('Laswer PWM off limit ({}):'.format(str(minOn)))
     if userIn != '': minOn = float(userIn) 
 
 
 if filenameIn == '':
     filenameIn = input('Input filename:')
 if filenameOut == '':
-    filenameOut = 'out'+filenameIn
+    filenameOut = 'out{0}_{1}deg_{2}x_x{3}y{4}'.format(filenameIn,rotation,defaultScale,offset.x,offset.y)
 if defaultScale!= 1 and ('tarDepth' in globals() or 'tarWidth' in globals()):
     print('scaling and widith or depth cannot be used together. skipping scaling')
     #skipping happens automatically as fixed width and depth will overwrite any fixed scaler
 
 ProcessFile(filenameIn,filenameOut)
-
-
-
-
