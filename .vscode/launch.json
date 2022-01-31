@@ -37,6 +37,22 @@
             "args": ["-iracoon_laser_moved.gcode","-X64","-Y14.5","-l128"]
         },
         {
+            "name": "laser tool shift",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["-iracoon_laser_moved.gcode","-cX64","-cY14.5","-l128","-X10","-Y10"]
+        },
+        {
+            "name": "laser tool shift 0 offset",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["-iracoon_laser_moved.gcode","-cX64","-cY14.5","-l128"]
+        },
+        {
             "name": "rotation +90",
             "type": "python",
             "request": "launch",

@@ -6,6 +6,7 @@
 # - analysis only mode with statistics before and after modification
 # - runs command line or interactive
 # - rotates image by -/+90 or 180 deg
+# TODO: set offsets based on laser offset
 
 from pathlib import Path
 import re
@@ -127,7 +128,8 @@ def ProcessFile (filenameIn, filenameOut):
         initialMin.min(initialMax)
         if 'bCleanMode' in globals():
             # calculate deltas based on requested location and found min values
-            delta -= initialMin
+            # add back any tool offset if defined
+            delta = delta - initialMin + toolOffset
         if 'tarDepth' in globals():
             scale.y = tarDepth/(initialMax.y-initialMin.y)
             # if width not specified scale proportionally
@@ -232,6 +234,7 @@ def Scale (position,scale,limLow,LimHi):
     return round(max(limLow,min(LimHi,position*scale)),6)
     
 offset = cAxis(0,0,0)
+toolOffset = cAxis(0,0,0)
 defaultScale = 1
 scale = cAxis(defaultScale,defaultScale,defaultScale,defaultScale,defaultScale)
 rotation = 0
@@ -259,6 +262,14 @@ if len(sys.argv) > 1:
                 offset.y = float(userData)
             case '-Z':
                 offset.z = float(userData)
+            case '-c':
+                # set offset based on absolute
+                bCleanMode = True
+                if len(userData) > 0:
+                    if userData[0:1] == 'X':
+                        toolOffset.x = float(userData[1:len(userData)])
+                    if userData[0:1] == 'Y':
+                        toolOffset.y = float(userData[1:len(userData)])
             case '-F':
                 scale.f = float(userData)
             case '-E':
@@ -279,8 +290,6 @@ if len(sys.argv) > 1:
             case '-a':
                 bAnalyseOnly = True
                 print('Analysis Only Mode - no output')
-            case '-c':
-                bCleanMode = True
             case '-l':
                 minOn = float(userData)
                 bLaserMode = True
