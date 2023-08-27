@@ -106,8 +106,8 @@ def ProcessFile (filenameIn, filenameOut):
     with open(Path(filenameIn),'r') as fileIn:
         # Find offset with finalMin
         for line in fileIn:
-            if line[0:1] == 'G':
-                for axis in ['X','Y','Z']:
+            if line[0:1] == 'G' or line[0:1] == 'M':
+                for axis in ['X','Y','Z','F']:
                     axisValue = findFloat(line,axis)
                     if axisValue:
                         position = float(axisValue.groups()[0])
@@ -121,7 +121,12 @@ def ProcessFile (filenameIn, filenameOut):
                             case 'Z':
                                 initialMin.z = min(initialMin.z,position)
                                 initialMax.z = max(initialMax.z,position)
-        
+                            case "F":
+                                initialMin.f = min(initialMin.f,position)
+                                initialMax.f = max(initialMax.f,position)
+                            case "S":
+                                initialMin.s = min(initialMin.s,position)
+                                initialMax.s = max(initialMax.s,position)
         # if no positions found in axis, min will be max, reset that
         initialMin.min(initialMax)
         if 'bCleanMode' in globals():
@@ -196,12 +201,16 @@ def ProcessFile (filenameIn, filenameOut):
                                 case 'F':
                                     currentPos = Scale(currentPos,scale.f,0,LimMax.f)
                                     lineNew+= ' '+axis+str(currentPos)
+                                    finalMax.f = max(currentPos,finalMax.f)
+                                    finalMin.f = min(currentPos,finalMin.f)
                                 case 'E':
                                     currentPos = Scale(currentPos,scale.e,-LimMax.e,LimMax.e)
                                     lineNew+= ' '+axis+str(currentPos)
                                 case 'S':
                                     currentPos = Scale(currentPos,scale.s,0,LimMax.s)
                                     lineNew+= ' '+axis+str(currentPos)
+                                    finalMax.s = max(currentPos,finalMax.s)
+                                    finalMin.s = min(currentPos,finalMin.s)
                     lineNew+='\n'
                 #check for Laser (fan PWM) on command M106 or M3
                 if linesplit[0] == "M106" or linesplit[0] == "M3":
@@ -228,6 +237,8 @@ def ProcessFile (filenameIn, filenameOut):
                                 else:
                                     currentSpd = Scale(currentSpd,scale.s,0,LimMax.s)
                                     lineNew+= ' '+axis+str(int(currentSpd))
+                                    finalMax.s = max(currentSpd,finalMax.s)
+                                    finalMin.s = min(currentSpd,finalMin.s)
                             case _:
                                 lineNew+= parts
                     bLaserOn=True
@@ -248,10 +259,14 @@ def ProcessFile (filenameIn, filenameOut):
         print('Min X: {0:.2f} Max X: {1:.2f} width: {2:.2f}'.format(initialMin.x, initialMax.x, initialMax.x-initialMin.x))
         print('Min Y: {0:.2f} Max Y: {1:.2f} depth: {2:.2f}'.format(initialMin.y, initialMax.y, initialMax.y-initialMin.y))
         print('Min Z: {0:.2f} Max Z: {1:.2f} height: {2:.2f}'.format(initialMin.z, initialMax.z, initialMax.z-initialMin.z))
+        print('feedrate    Min: {0:2f} Max: {1:2f}'.format(initialMin.f,initialMax.f))
+        print('Speed/laser Min: {0:2f} Max: {1:2f}'.format(initialMin.s,initialMax.s))
         print('Final')
         print('Min X: {0:.2f} Max X: {1:.2f} width: {2:.2f}'.format(finalMin.x, finalMax.x, finalMax.x-finalMin.x))
         print('Min Y: {0:.2f} Max Y: {1:.2f} depth: {2:.2f}'.format(finalMin.y, finalMax.y, finalMax.y-finalMin.y))
         print('Min Z: {0:.2f} Max Z: {1:.2f} height: {2:.2f}'.format(finalMin.z, finalMax.z, finalMax.z-finalMin.z))
+        print('feedrate    Min: {0:2f} Max: {1:2f}'.format(finalMin.f,finalMax.f))
+        print('Speed/laser Min: {0:2f} Max: {1:2f}'.format(finalMin.s,finalMax.s))
 
 def Transpose (position,offset,limLow,limHi):
     return round(max(limLow,min(limHi,position+offset)),6)
