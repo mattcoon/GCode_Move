@@ -1,40 +1,38 @@
 # gcode_move by Matthew Coon
 # written to support easy manipulation of GCODE for 3d printing or laser cutting
-# - moving offset to object from 0,0,0
-# - scaling feed, extrusion, or X,Y,Z independently
-# - scale based on target width or depth
-# - analysis only mode with statistics before and after modification
-# - runs command line or interactive
-# - rotates image by -/+90 or 180 deg
-# TODO: set offsets based on laser offset
 
 from pathlib import Path
 import re
 import sys
 
+# cAxis is a class with all known axises to be adjusted. these include the expected XYZ and e for extruder, f for
+# feedrate and s for fanspeed
 class cAxis:
-    def __init__(self,x=0,y=0,z=0,f=0,e=0) -> None:
+    def __init__(self,x=0,y=0,z=0,f=0,e=0,s=0) -> None:
         self.x = x
         self.y = y 
         self.z = z
         self.f = f
         self.e = e
+        self.s = s
     def __add__(self,addr):
-        return cAxis(self.x+addr.x, self.y+addr.y, self.z+addr.z, self.f+addr.f, self.e+addr.e)
+        return cAxis(self.x+addr.x, self.y+addr.y, self.z+addr.z, self.f+addr.f, self.e+addr.e, self.s+addr.s)
     def __sub__(self,addr):
-        return cAxis(self.x-addr.x, self.y-addr.y, self.z-addr.z, self.f-addr.f, self.e-addr.e)
+        return cAxis(self.x-addr.x, self.y-addr.y, self.z-addr.z, self.f-addr.f, self.e-addr.e, self.s-addr.s)
     def min(self,other):
         self.x = min(self.x,other.x)
         self.y = min(self.y,other.y)
         self.z = min(self.z,other.z)
         self.f = min(self.f,other.f)
         self.e = min(self.e,other.e)
+        self.s = min(self.s,other.s)
     def copy(self,other):
         self.x = other.x
         self.y = other.y
         self.z = other.z
         self.f = other.f
         self.e = other.e
+        self.s = other.s
     def setXYZ(self,value):
         self.x = value
         self.y = value
@@ -85,7 +83,7 @@ def findInt (str,param):
     # strPostion is the G0 axis string, 'X12.23'. function returns corrected string after rotation
 
 
-
+# ProcessFile is the core workhorse to pull in each line, parse and manipulate as needed and option write out
 def ProcessFile (filenameIn, filenameOut):
     global cAxis
     global scale
@@ -145,25 +143,28 @@ def ProcessFile (filenameIn, filenameOut):
         # reset file if offset searched
 
         for line in fileIn:
-            linesplit = line.split()
+            commandComment = line.split(';')
+            # everything after the ; is a comment. only parse before the ;
+            command = commandComment[0]
+            comment = ''
+            if len(commandComment) > 1:
+                comment = ';' + commandComment[1]
+            linesplit = command.split()
+            lineNew = command
             if linesplit:
                 #check if command is a move
                 if linesplit[0] == 'G0' or linesplit[0] == 'G1':
                     for parts in linesplit:
-                        if parts[0:1] == ';':
-                            #end of line / comment reached
-                            break
-                        if parts[0:1] == 'G':
+                        if parts[0:1] == 'G': # G0 G1 Handler
                             # handle laser by making g0 g1 and threshold to completely turn off laser
-                            if bLaserMode:
+                            if bLaserMode: # use G0 for unpowered laser moves, G1 for powered
                                 if bLaserOn:
                                     lineNew = 'G1'
                                 else:
                                     lineNew = 'G0'
-                            else:
-                                #leave G0/G1 alone as pass thru
+                            else: #leave G0/G1 alone as pass thru
                                 lineNew = parts
-                        else:
+                        else: # handle all other parts of move line
                             if rotation != 0:
                                 # rotation done before scaling and offsetting and axis to simplify handling of parameter
                                 parts = rotate(parts,rotation,initialMin,initialMax)
@@ -198,26 +199,51 @@ def ProcessFile (filenameIn, filenameOut):
                                 case 'E':
                                     currentPos = Scale(currentPos,scale.e,-LimMax.e,LimMax.e)
                                     lineNew+= ' '+axis+str(currentPos)
-                    line = lineNew+'\n'
-                #check for Laser (fan PWM) on command
-                if linesplit[0] == "M106":
-                    fanSpeed = int(findInt(linesplit[1],'S').groups()[0])
-                    if fanSpeed < minOn:
-                        line = "M107 ; output limited\n"
-                        bLaserOn=False
-                    else:
-                        # else write line as is.
-                        bLaserOn=True
+                                case 'S':
+                                    currentPos = Scale(currentPos,scale.s,0,LimMax.s)
+                                    lineNew+= ' '+axis+str(currentPos)
+                    lineNew+='\n'
+                #check for Laser (fan PWM) on command M106 or M3
+                if linesplit[0] == "M106" or linesplit[0] == "M3":
+                        #fanSpeed = int(findInt(linesplit[1],'S').groups()[0])
+                        #if fanSpeed < minOn:
+                        #    line = "M107 ; output limited\n"
+                        #    bLaserOn=False
+                        #else:
+                    # TODO: update if translating M3 to M106 etc
+                    lineNew = ""
+                    # else write line as is.
+                    for parts in linesplit:
+                        axis = parts[0:1]
+                        valuestr = findInt(parts,axis)
+                        match axis:
+                            case 'S':
+                                if valuestr:
+                                    currentSpd = int(valuestr.groups()[0])
+                                else:
+                                    currentSpd = 0
+                                if currentSpd < minOn:
+                                    line = "M107 ; output limited\n"
+                                    bLaserOn=False
+                                else:
+                                    currentSpd = Scale(currentSpd,scale.s,0,LimMax.s)
+                                    lineNew+= ' '+axis+str(int(currentSpd))
+                            case _:
+                                lineNew+= parts
+                    bLaserOn=True
+                    lineNew+='\n'
                 # check for laser (fan PWM) off commadn
                 if linesplit[0] == "M107":
                     bLaserOn = False
-                # write only if not in analyse only mode
-                if bAnalyseOnly == False:
-                    fileOut.write(line)
+            line = lineNew+comment
+            # write only if not in analyse only mode
+            if bAnalyseOnly == False:
+                fileOut.write(line)
         # fix any statistics where no change in axis. min will still be at max
         finalMin.min(finalMax)
         # output statistics 
         print('Scaled by x:{0:.2f} y:{1:.2f}.'.format(scale.x,scale.y))
+        print('Scaled feedrate:{0:2f}  laser:{1:2f}'.format(scale.f,scale.s))
         print('Initial')
         print('Min X: {0:.2f} Max X: {1:.2f} width: {2:.2f}'.format(initialMin.x, initialMax.x, initialMax.x-initialMin.x))
         print('Min Y: {0:.2f} Max Y: {1:.2f} depth: {2:.2f}'.format(initialMin.y, initialMax.y, initialMax.y-initialMin.y))
@@ -236,11 +262,11 @@ def Scale (position,scale,limLow,LimHi):
 offset = cAxis(0,0,0)
 toolOffset = cAxis(0,0,0)
 defaultScale = 1
-scale = cAxis(defaultScale,defaultScale,defaultScale,defaultScale,defaultScale)
+scale = cAxis(defaultScale,defaultScale,defaultScale,defaultScale,defaultScale,defaultScale)
 rotation = 0
-LimMax = cAxis (220, 220,250,50000,50000)
+LimMax = cAxis (1220,900,250,50000,50000,255)
 LimMin = cAxis (0, 0, 0)
-minOn = 0.0
+minOn = 0
 filenameIn = ''
 filenameOut = ''
 bAnalyseOnly = False
@@ -252,17 +278,17 @@ if len(sys.argv) > 1:
         keyword = argument[0:2]
         userData = argument[2:len(argument)]
         match keyword:
-            case '-i':
+            case '-i':  # input file
                 filenameIn = userData
-            case '-o':
+            case '-o':  # output file
                 filenameOut = userData
-            case '-X':
+            case '-X':  # X offset
                 offset.x = float(userData)
-            case '-Y':
+            case '-Y':  # Y offset
                 offset.y = float(userData)
-            case '-Z':
+            case '-Z':  # Z offset
                 offset.z = float(userData)
-            case '-c':
+            case '-c':  # clean offset base on min gcode value
                 # set offset based on absolute
                 bCleanMode = True
                 if len(userData) > 0:
@@ -270,15 +296,18 @@ if len(sys.argv) > 1:
                         toolOffset.x = float(userData[1:len(userData)])
                     if userData[0:1] == 'Y':
                         toolOffset.y = float(userData[1:len(userData)])
-            case '-F':
+            case '-F':  # Feedrate scaling
                 scale.f = float(userData)
-            case '-E':
+            case '-E':  # Extruder scaling
                 scale.e = float(userData)
-            case '-h':
+            case '-S':  # Speed scaling for FAN/Laser.
+                scale.s = float(userData)
+            case '-h':  # help
                 print('gcode_move -iInputFile -oOutputFile -Xoffset -Yoffset -Zoffset -FFeedrate -EExtruderrate')
-                print('           -aAnalyseOnly -lLaserlowerLimit -sScale -cClean -wWidth -dDepth -rRotate')
+                print('           -Sfanspeed -aAnalyseOnly -lLaserlowerLimit -sScale -cClean -wWidth -dDepth -rRotate')
                 print('Feedrates are in percent. Offset in mm.')
                 print('laser affects fanspeed 0-255 before turning off laser and puts in laser mode. ')
+                print('S option will scale all S parameters used in Gx M3, and M106 commands my multiplying')
                 print('G1 while laser is off will become G0. use -l0 to keep laser PWMs but use G1/G0 substitutions')
                 print('XYZ scaling will treat as a mulitpler for any present components while keeping offsets. Note for 3d')
                 print('the first line is in scope and will prevent use of offset for scaling')
@@ -287,20 +316,20 @@ if len(sys.argv) > 1:
                 print('Width and Depth cannot be used together with Scaling.')
                 print('Rotate take 90 for CW, 180, or -90 for CCW rotations only')
                 quit()
-            case '-a':
+            case '-a':  # analysis and report only / no output
                 bAnalyseOnly = True
                 print('Analysis Only Mode - no output')
-            case '-l':
-                minOn = float(userData)
+            case '-l':  # laser mode with min on value
+                minOn = int(userData)
                 bLaserMode = True
-            case '-s':
+            case '-s':  # scale X and Y and Z
                 defaultScale = (float(userData))
                 scale.setXYZ(defaultScale)
-            case '-w':
+            case '-w':  # width of output image
                 tarWidth = float(userData)
-            case '-d':
+            case '-d':  # depth/height of output image
                 tarDepth = float(userData)
-            case '-r':
+            case '-r':  # rotate image
                 if userData == '0':
                     rotation = 0
                 elif userData == '90':
@@ -328,6 +357,8 @@ else:
     if userIn != '': scale.f = float(userIn) 
     userIn = input('Extruder Rate scaling ({}):'.format(str(scale.e)))
     if userIn != '': scale.e = float(userIn) 
+    userIn = input('Fan/laser speed scaling ({}):'.format(str(scale.s)))
+    if userIn != '': scale.s = float(userIn) 
     userIn = input('Max X value ({}):'.format(str(LimMax.x)))
     if userIn != '': LimMax.x = float(userIn) 
     userIn = input('Max Y value ({}):'.format(str(LimMax.y)))
@@ -338,8 +369,8 @@ else:
     if userIn != '': LimMax.f = float(userIn) 
     userIn = input('Max Extruder ({}):'.format(str(LimMax.e)))
     if userIn != '': LimMax.e = float(userIn) 
-    userIn = input('Laswer PWM off limit ({}):'.format(str(minOn)))
-    if userIn != '': minOn = float(userIn) 
+    userIn = input('Laser PWM off limit ({}):'.format(str(minOn)))
+    if userIn != '': minOn = int(userIn) 
 
 
 if filenameIn == '':
