@@ -13,6 +13,14 @@
             "args": ["-iKalicoon_LB.gcode","-X20","-Y12","-c"]
         },
         {
+            "name": "laser translation",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["-iracoon_laser_moved.gcode","-S0.5","-TM3"]
+        },
+        {
             "name": "laser limiter",
             "type": "python",
             "request": "launch",

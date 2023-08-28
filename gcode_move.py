@@ -130,6 +130,8 @@ def ProcessFile (filenameIn, filenameOut):
                             case "S":
                                 initialMin.s = min(initialMin.s,position)
                                 initialMax.s = max(initialMax.s,position)
+
+
         # if no positions found in axis, min will be max, reset that
         initialMin.min(initialMax)
         if 'bCleanMode' in globals():
@@ -147,9 +149,9 @@ def ProcessFile (filenameIn, filenameOut):
             if 'tarDepth' not in globals():
                 scale.y = scale.x
 
+
         fileIn.seek(0)
         # reset file if offset searched
-
         for line in fileIn:
             commandComment = line.split(';')
             # everything after the ; is a comment. only parse before the ;
@@ -217,18 +219,15 @@ def ProcessFile (filenameIn, filenameOut):
                     lineNew+='\n'
                 #check for Laser (fan PWM) on command M106 or M3
                 if linesplit[0] == "M106" or linesplit[0] == "M3":
-                        #fanSpeed = int(findInt(linesplit[1],'S').groups()[0])
-                        #if fanSpeed < minOn:
-                        #    line = "M107 ; output limited\n"
-                        #    bLaserOn=False
-                        #else:
-                    # TODO: update if translating M3 to M106 etc
                     lineNew = ""
                     # else write line as is.
                     for parts in linesplit:
                         axis = parts[0:1]
                         valuestr = findInt(parts,axis)
                         match axis:
+                            case 'M':
+                                if bTranslate:
+                                    lineNew += sTranslate
                             case 'S':
                                 if valuestr:
                                     currentSpd = int(valuestr.groups()[0])
@@ -253,6 +252,8 @@ def ProcessFile (filenameIn, filenameOut):
             # write only if not in analyse only mode
             if bAnalyseOnly == False:
                 fileOut.write(line)
+
+
         # fix any statistics where no change in axis. min will still be at max
         finalMin.min(finalMax)
         # output statistics 
@@ -289,7 +290,8 @@ filenameIn = ''
 filenameOut = ''
 bAnalyseOnly = False
 bLaserMode = False
-
+bTranslate = False
+sTranslate = '' # all M3 and M106 will be translated to this string if bTranslate is True
 
 if len(sys.argv) > 1:
     for argument in sys.argv:
@@ -320,9 +322,12 @@ if len(sys.argv) > 1:
                 scale.e = float(userData)
             case '-S':  # Speed scaling for FAN/Laser.
                 scale.s = float(userData)
+            case '-T':  # translate to M3 or M106 for laser speed control
+                bTranslate = True
+                sTranslate = userData
             case '-h':  # help
                 print('gcode_move -iInputFile -oOutputFile -Xoffset -Yoffset -Zoffset -FFeedrate -EExtruderrate')
-                print('           -Sfanspeed -aAnalyseOnly -lLaserlowerLimit -sScale -cClean -wWidth -dDepth -rRotate')
+                print('           -Sfanspeed -Ttranslate -aAnalyseOnly -lLaserlowerLimit -sScale -cClean -wWidth -dDepth -rRotate')
                 print('Feedrates are in percent. Offset in mm.')
                 print('laser affects fanspeed 0-255 before turning off laser and puts in laser mode. ')
                 print('S option will scale all S parameters used in Gx M3, and M106 commands my multiplying')
@@ -333,6 +338,7 @@ if len(sys.argv) > 1:
                 print('If cleanmode and offset used, will set object to absolute locations')
                 print('Width and Depth cannot be used together with Scaling.')
                 print('Rotate take 90 for CW, 180, or -90 for CCW rotations only')
+                print('Translate looks for M3 or M106 if enabled and will take the passed parameter as new command. ex: -TM106')
                 quit()
             case '-a':  # analysis and report only / no output
                 bAnalyseOnly = True
@@ -389,6 +395,10 @@ else:
     if userIn != '': LimMax.e = float(userIn) 
     userIn = input('Laser PWM off limit ({}):'.format(str(minOn)))
     if userIn != '': minOn = int(userIn) 
+    userIn = input('Laser Translation ({}):'.format(str(sTranslate)))
+    if userIn != '': 
+        sTranslate = str(userIn)
+        bTranslate = True
 
 
 if filenameIn == '':
