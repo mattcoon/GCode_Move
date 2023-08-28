@@ -228,6 +228,8 @@ def ProcessFile (filenameIn, filenameOut):
                             case 'M':
                                 if bTranslate:
                                     lineNew += sTranslate
+                                else:
+                                    lineNew += parts
                             case 'S':
                                 if valuestr:
                                     currentSpd = int(valuestr.groups()[0])

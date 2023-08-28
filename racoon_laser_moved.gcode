@@ -1,4 +1,3 @@
-
 ;Created using Nebarnix's IMG2GCO program Ver 1.2
 ;http://nebarnix.com 2017
 ;Size in pixels X=219, Y=200
