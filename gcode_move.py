@@ -106,8 +106,11 @@ def ProcessFile (filenameIn, filenameOut):
     with open(Path(filenameIn),'r') as fileIn:
         # Find offset with finalMin
         for line in fileIn:
+            commandComment = line.split(';')
+            # everything after the ; is a comment. only parse before the ;
+            line = commandComment[0]
             if line[0:1] == 'G' or line[0:1] == 'M':
-                for axis in ['X','Y','Z','F']:
+                for axis in ['X','Y','Z','F','S']:
                     axisValue = findFloat(line,axis)
                     if axisValue:
                         position = float(axisValue.groups()[0])
