@@ -213,7 +213,7 @@ def ProcessFile (filenameIn, filenameOut):
                                     lineNew+= ' '+axis+str(currentPos)
                                 case 'S':
                                     currentPos = Scale(currentPos,scale.s,0,LimMax.s)
-                                    lineNew+= ' '+axis+str(currentPos)
+                                    lineNew+= ' '+axis+str(int(currentPos))
                                     finalMax.s = max(currentPos,finalMax.s)
                                     finalMin.s = min(currentPos,finalMin.s)
                     lineNew+='\n'
@@ -236,7 +236,7 @@ def ProcessFile (filenameIn, filenameOut):
                                 else:
                                     currentSpd = 0
                                 if currentSpd < minOn:
-                                    line = "M107 ; output limited\n"
+                                    line = sTranslateOff + " ; output limited\n"
                                     bLaserOn=False
                                 else:
                                     currentSpd = Scale(currentSpd,scale.s,0,LimMax.s)
@@ -249,6 +249,8 @@ def ProcessFile (filenameIn, filenameOut):
                     lineNew+='\n'
                 # check for laser (fan PWM) off commadn
                 if linesplit[0] == "M107":
+                    if bTranslate:
+                        lineNew = sTranslateOff + '\n'
                     bLaserOn = False
             line = lineNew+comment
             # write only if not in analyse only mode
@@ -294,6 +296,7 @@ bAnalyseOnly = False
 bLaserMode = False
 bTranslate = False
 sTranslate = '' # all M3 and M106 will be translated to this string if bTranslate is True
+sTranslateOff = 'M5' # based on translate string will define off string
 
 if len(sys.argv) > 1:
     for argument in sys.argv:
@@ -327,6 +330,10 @@ if len(sys.argv) > 1:
             case '-T':  # translate to M3 or M106 for laser speed control
                 bTranslate = True
                 sTranslate = userData
+                if sTranslate == 'M3':
+                    sTranslateOff = 'M5'
+                else:
+                    sTranslateOff = 'M107'
             case '-h':  # help
                 print('gcode_move -iInputFile -oOutputFile -Xoffset -Yoffset -Zoffset -FFeedrate -EExtruderrate')
                 print('           -Sfanspeed -Ttranslate -aAnalyseOnly -lLaserlowerLimit -sScale -cClean -wWidth -dDepth -rRotate')
