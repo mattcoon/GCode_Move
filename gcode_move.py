@@ -218,7 +218,7 @@ def ProcessFile (filenameIn, filenameOut):
                                     finalMin.s = min(currentPos,finalMin.s)
                     lineNew+='\n'
                 #check for Laser (fan PWM) on command M106 or M3
-                if linesplit[0] == "M106" or linesplit[0] == "M3":
+                if linesplit[0] == "M106" or linesplit[0] == "M3S" or linesplit[0] == "M3O":
                     lineNew = ""
                     # else write line as is.
                     for parts in linesplit:
@@ -230,7 +230,7 @@ def ProcessFile (filenameIn, filenameOut):
                                     lineNew += sTranslate
                                 else:
                                     lineNew += parts
-                            case 'S':
+                            case 'S' | 'O':
                                 if valuestr:
                                     currentSpd = int(valuestr.groups()[0])
                                 else:
@@ -248,7 +248,7 @@ def ProcessFile (filenameIn, filenameOut):
                     bLaserOn=True
                     lineNew+='\n'
                 # check for laser (fan PWM) off commadn
-                if linesplit[0] == "M107":
+                if linesplit[0] == "M107" or linesplit[0] == "S5":
                     if bTranslate:
                         lineNew = sTranslateOff + '\n'
                     bLaserOn = False
@@ -330,7 +330,7 @@ if len(sys.argv) > 1:
             case '-T':  # translate to M3 or M106 for laser speed control
                 bTranslate = True
                 sTranslate = userData
-                if sTranslate == 'M3':
+                if sTranslate == 'M3O' or sTranslate == 'M3S':
                     sTranslateOff = 'M5'
                 else:
                     sTranslateOff = 'M107'
