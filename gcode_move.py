@@ -198,11 +198,20 @@ def ProcessFile (filenameIn, filenameOut):
                                     finalMax.y = max(currentPos,finalMax.y)
                                     finalMin.y = min(currentPos,finalMin.y)
                                 case 'Z':
-                                    currentPos = Scale(currentPos-initialMin.z,scale.z,0,LimMax.z)+initialMin.z
-                                    currentPos = Transpose(currentPos,delta.z,0,LimMax.z)
-                                    lineNew+= ' {0:s}{1:.6f}'.format(axis,currentPos)
-                                    finalMax.z = max(currentPos,finalMax.z)
-                                    finalMin.z = min(currentPos,finalMin.z)
+                                    if bZ2Laser == False:
+                                        currentPos = Scale(currentPos-initialMin.z,scale.z,0,LimMax.z)+initialMin.z
+                                        currentPos = Transpose(currentPos,delta.z,0,LimMax.z)
+                                        lineNew+= ' {0:s}{1:.6f}'.format(axis,currentPos)
+                                        finalMax.z = max(currentPos,finalMax.z)
+                                        finalMin.z = min(currentPos,finalMin.z)
+                                    else:
+                                        laserPower = 0
+                                        if currentPos < zThreshold: # use z drop to represent when laser should be on
+                                            bLaserOn = True
+                                            laserPower = minOn
+                                        else: # Z lift indicating turn off laser
+                                            bLaserOn = False
+                                        lineNew += ' I S{0}'.format(laserPower)
                                 case 'F':
                                     currentPos = Scale(currentPos,scale.f,0,LimMax.f)
                                     lineNew+= ' '+axis+str(currentPos)
@@ -218,7 +227,7 @@ def ProcessFile (filenameIn, filenameOut):
                                     finalMin.s = min(currentPos,finalMin.s)
                     lineNew+='\n'
                 #check for Laser (fan PWM) on command M106 or M3
-                if linesplit[0] == "M106" or linesplit[0] == "M3S" or linesplit[0] == "M3O":
+                if linesplit[0] == "M106" or linesplit[0] == "M3":
                     lineNew = ""
                     # else write line as is.
                     for parts in linesplit:
@@ -248,7 +257,7 @@ def ProcessFile (filenameIn, filenameOut):
                     bLaserOn=True
                     lineNew+='\n'
                 # check for laser (fan PWM) off commadn
-                if linesplit[0] == "M107" or linesplit[0] == "S5":
+                if linesplit[0] == "M107" or linesplit[0] == "M5":
                     if bTranslate:
                         lineNew = sTranslateOff + '\n'
                     bLaserOn = False
@@ -297,6 +306,8 @@ bLaserMode = False
 bTranslate = False
 sTranslate = '' # all M3 and M106 will be translated to this string if bTranslate is True
 sTranslateOff = 'M5' # based on translate string will define off string
+zThreshold = 0
+bZ2Laser = False
 
 if len(sys.argv) > 1:
     for argument in sys.argv:
@@ -334,27 +345,20 @@ if len(sys.argv) > 1:
                     sTranslateOff = 'M5'
                 else:
                     sTranslateOff = 'M107'
-            case '-h':  # help
-                print('gcode_move -iInputFile -oOutputFile -Xoffset -Yoffset -Zoffset -FFeedrate -EExtruderrate')
-                print('           -Sfanspeed -Ttranslate -aAnalyseOnly -lLaserlowerLimit -sScale -cClean -wWidth -dDepth -rRotate')
-                print('Feedrates are in percent. Offset in mm.')
-                print('laser affects fanspeed 0-255 before turning off laser and puts in laser mode. ')
-                print('S option will scale all S parameters used in Gx M3, and M106 commands my multiplying')
-                print('G1 while laser is off will become G0. use -l0 to keep laser PWMs but use G1/G0 substitutions')
-                print('XYZ scaling will treat as a mulitpler for any present components while keeping offsets. Note for 3d')
-                print('the first line is in scope and will prevent use of offset for scaling')
-                print('Clean mode removes all offsets and sets object to 0 offset.')
-                print('If cleanmode and offset used, will set object to absolute locations')
-                print('Width and Depth cannot be used together with Scaling.')
-                print('Rotate take 90 for CW, 180, or -90 for CCW rotations only')
-                print('Translate looks for M3 or M106 if enabled and will take the passed parameter as new command. ex: -TM106')
-                quit()
             case '-a':  # analysis and report only / no output
                 bAnalyseOnly = True
                 print('Analysis Only Mode - no output')
             case '-l':  # laser mode with min on value
                 minOn = int(userData)
                 bLaserMode = True
+            case '-L':  # laser translation from z moves
+                if userData[0:1] == 'z':
+                    # use z threshold to make laser fill
+                    bZ2Laser = True
+                    bLaserMode = True
+                    if minOn == 0:
+                        minOn = 128 # default to minimum 128 if not set
+                    zThreshold = int(userData[1:len(userData)])
             case '-s':  # scale X and Y and Z
                 defaultScale = (float(userData))
                 scale.setXYZ(defaultScale)
@@ -375,6 +379,21 @@ if len(sys.argv) > 1:
                     print('Rotation of {} not allowed.'.format(userData))
                     quit()
                 print('Image rotation {}'.format(rotation))
+            case '-h':  # help
+                print('gcode_move -iInputFile -oOutputFile -Xoffset -Yoffset -Zoffset -FFeedrate -EExtruderrate')
+                print('           -Sfanspeed -Ttranslate -aAnalyseOnly -lLaserlowerLimit -sScale -cClean -wWidth -dDepth -rRotate')
+                print('Feedrates are in percent. Offset in mm.')
+                print('laser affects fanspeed 0-255 before turning off laser and puts in laser mode. ')
+                print('S option will scale all S parameters used in Gx M3, and M106 commands my multiplying')
+                print('G1 while laser is off will become G0. use -l0 to keep laser PWMs but use G1/G0 substitutions')
+                print('XYZ scaling will treat as a mulitpler for any present components while keeping offsets. Note for 3d')
+                print('the first line is in scope and will prevent use of offset for scaling')
+                print('Clean mode removes all offsets and sets object to 0 offset.')
+                print('If cleanmode and offset used, will set object to absolute locations')
+                print('Width and Depth cannot be used together with Scaling.')
+                print('Rotate take 90 for CW, 180, or -90 for CCW rotations only')
+                print('Translate looks for M3 or M106 if enabled and will take the passed parameter as new command. ex: -TM106')
+                quit()
 else:
     # No arguments passed. walk user thru common inputs
     print('no args - defaults in ( )')
