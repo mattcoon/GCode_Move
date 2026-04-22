@@ -221,7 +221,15 @@ def ProcessFile (filenameIn, filenameOut):
                                     currentPos = Scale(currentPos,scale.e,-LimMax.e,LimMax.e)
                                     lineNew+= ' '+axis+str(currentPos)
                                 case 'S':
-                                    currentPos = Scale(currentPos,scale.s,0,LimMax.s)
+                                    if valuestr:
+                                        currentSpd = int(valuestr.groups()[0])
+                                    else:
+                                        currentSpd = 0
+                                    if currentSpd < minOn:
+                                        comment = "output limited\n"
+                                        bLaserOn=False
+                                        currentSpd = 0
+                                    currentPos = Scale(currentSpd,scale.s,0,LimMax.s)
                                     lineNew+= ' '+axis+str(int(currentPos))
                                     finalMax.s = max(currentPos,finalMax.s)
                                     finalMin.s = min(currentPos,finalMin.s)
@@ -336,7 +344,7 @@ if len(sys.argv) > 1:
                 scale.f = float(userData)
             case '-E':  # Extruder scaling
                 scale.e = float(userData)
-            case '-S':  # Speed scaling for FAN/Laser.
+            case '-1':  # Speed scaling for FAN/Laser.
                 scale.s = float(userData)
             case '-T':  # translate to M3 or M106 for laser speed control
                 bTranslate = True
@@ -351,7 +359,7 @@ if len(sys.argv) > 1:
             case '-l':  # laser mode with min on value
                 minOn = int(userData)
                 bLaserMode = True
-            case '-L':  # laser translation from z moves
+            case '-2':  # laser translation from z moves
                 if userData[0:1] == 'z':
                     # use z threshold to make laser fill
                     bZ2Laser = True
@@ -432,7 +440,7 @@ else:
 if filenameIn == '':
     filenameIn = input('Input filename:')
 if filenameOut == '':
-    filenameOut = 'out{0}_{1}deg_{2}x_x{3}y{4}'.format(filenameIn,rotation,defaultScale,offset.x,offset.y)
+    filenameOut = 'out{0}_{1}deg_{2}x_x{3}y{4}.gcode'.format(filenameIn,rotation,defaultScale,offset.x,offset.y)
 if defaultScale!= 1 and ('tarDepth' in globals() or 'tarWidth' in globals()):
     print('scaling and widith or depth cannot be used together. skipping scaling')
     #skipping happens automatically as fixed width and depth will overwrite any fixed scaler
